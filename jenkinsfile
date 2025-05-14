@@ -1,0 +1,80 @@
+pipeline {
+    agent any
+
+    environment {
+        QEMU_IMAGE = '/romulus/romulus/obmc-phosphor-image-romulus-20250418213140.static.mtd'
+        QEMU_LOG = 'qemu.log'
+        VENV = 'venv'
+    }
+
+    stages {
+        stage('Add Environments') {
+            steps {
+                sh '''
+                    apt-get update
+                    apt-get install -y wget python3-venv python3-pip qemu-system-arm curl xvfb chromium-driver chromium
+
+                    python3 -m venv ${VENV}
+                    . ${VENV}/bin/activate
+                    pip install --upgrade pip
+                    pip install -r biblios.txt
+                '''
+            }
+        }
+
+        stage('Start QEMU with OpenBMC') {
+            steps {
+                sh '''
+                    nohup qemu-system-arm -m 256 -M romulus-bmc -nographic \
+                        -drive file=${QEMU_IMAGE},format=raw,if=mtd \
+                        -net nic -net user,hostfwd=:0.0.0.0:2222-:22,hostfwd=:0.0.0.0:2443-:443,hostfwd=udp:0.0.0.0:2623-:623 \
+                        > ${QEMU_LOG} 2>&1 &
+
+                    sleep 60
+                '''
+            }
+        }
+
+        stage('Run Redfish API Tests') {
+            steps {
+                sh '''
+                    . ${VENV}/bin/activate
+                    pytest -v test_redsh.py > redfish_tests.log || true
+                '''
+                archiveArtifacts artifacts: 'redfish_tests.log', onlyIfSuccessful: false
+            }
+        }
+
+        stage('Run WebUI Tests') {
+            steps {
+                sh '''
+                    export DISPLAY=:99
+                    Xvfb :99 &
+
+                    . ${VENV}/bin/activate
+                    sleep 5
+                    pytest -v openbmc_auth_tests.py > webui.log || true
+                '''
+                archiveArtifacts artifacts: 'webui.log', onlyIfSuccessful: false
+            }
+        }
+
+        stage('Run Load Tests') {
+            steps {
+                sh '''
+                    . ${VENV}/bin/activate
+                    locust -f locustfile.py --headless --host https://localhost:2443 \
+                        --users 5 --spawn-rate 1 -t1m > locust.log 2>&1 || true
+                '''
+                archiveArtifacts artifacts: 'locust.log', onlyIfSuccessful: false
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: "${QEMU_LOG}", onlyIfSuccessful: false
+            sh 'pkill -f qemu-system-arm || true'
+        }
+    }
+}

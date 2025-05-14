@@ -1,0 +1,13 @@
+pytest
+requests
+warnings
+logging
+time
+
+selenium
+
+locust
+
+urllib3
+
+certifi

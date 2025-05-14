@@ -1,6 +1,10 @@
 pipeline {
-    agent any
-
+    agent {
+        docker {
+            image 'ubuntu:24.04'
+            args  '-u root:root --privileged'
+        }
+    }
     environment {
         QEMU_IMAGE = '/romulus/romulus/obmc-phosphor-image-romulus-20250418213140.static.mtd'
         QEMU_LOG = 'qemu.log'

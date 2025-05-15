@@ -1,7 +1,5 @@
 pytest
 requests
-logging
-time
 
 selenium
 

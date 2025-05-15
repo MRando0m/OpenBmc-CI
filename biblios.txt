@@ -1,6 +1,5 @@
 pytest
 requests
-warnings
 logging
 time
 

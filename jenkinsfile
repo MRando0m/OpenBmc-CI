@@ -6,7 +6,7 @@ pipeline {
         }
     }
     environment {
-        QEMU_IMAGE = '/romulus/romulus/obmc-phosphor-image-romulus-20250418213140.static.mtd'
+        QEMU_IMAGE = '/romulus/romulus/obmc-phosphor-image-romulus-20250214213550.static.mtd'
         QEMU_LOG = 'qemu.log'
         VENV = 'venv'
     }

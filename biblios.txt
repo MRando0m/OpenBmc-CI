@@ -1,8 +1,5 @@
 pytest
 requests
-warnings
-logging
-time
 
 selenium
 

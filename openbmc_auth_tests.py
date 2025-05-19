@@ -2,74 +2,100 @@ import pytest
 import time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 
-@pytest.fixture(scope="session")
+# Фикстура для инициализации и завершения работы драйвера
+@pytest.fixture(scope="module")
 def driver():
-    options = webdriver.ChromeOptions()
-    options.binary_location = '/usr/bin/google-chrome'
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--ignore-certificate-errors')
+    # Настройка опций Chrome
+    options = Options()
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--ignore-certificate-errors")
+    options.add_argument("--headless") # Для CI
 
-    service = Service(executable_path='/usr/local/bin/chromedriver')
+    service = Service(executable_path="/usr/bin/chromedriver")
+
+    # Инициализация драйвера
     driver = webdriver.Chrome(service=service, options=options)
-    yield driver
+    yield driver  # Возвращаем драйвер тесту
+
+    # Завершение работы драйвера после выполнения теста
     driver.quit()
 
-@pytest.fixture
-def wait(driver):
-    return WebDriverWait(driver, 10)
+# Тест для проверки авторизации
+def test_success_login(driver):
+    # Переход на страницу авторизации
+    driver.get('https://localhost:2443/?next=/login#/login')
+    time.sleep(3)  # Ожидание загрузки страницы
 
-def login(driver, wait, username: str, password: str):
-    driver.get("https://localhost:2443/?next=/login#/login")
-    wait.until(EC.presence_of_element_located((By.ID, "username"))).send_keys(username)
-    driver.find_element(By.ID, "password").send_keys(password)
-    driver.find_element(By.XPATH, "//button[@type='submit']").click()
-    
-def test_successful_login(driver, wait):
-    login(driver, wait, "root", "0penBmc")
+    # Поиск элементов на странице
+    username = driver.find_element(By.ID, 'username')
+    password = driver.find_element(By.ID, 'password')
+    login_button = driver.find_element(By.CLASS_NAME, 'btn.btn-primary.mt-3')
 
-    header = wait.until(
-        EC.visibility_of_element_located((By.ID, "app-header-refresh"))
-    )
-    
-    assert header.is_displayed(), "Авторизация не удалась"
+    # Ввод данных для авторизации
+    username.send_keys('root')
+    password.send_keys('0penBmc')
 
-def test_invalid_credentials(driver, wait):
-    initial_url = "https://localhost:2443/?next=/login#/login"
-    login(driver, wait, "wrong", "wrong")
-    
-    try:
-        wait.until(EC.url_to_be(initial_url))
-    except Exception:
-        pytest.fail(f"Редирект на другую страницу. Текущий URL: {driver.current_url}")
-    
-    assert driver.current_url == initial_url, "Не произошел редирект на другую страницу при неверных данных"
+    # Нажатие кнопки входа
+    login_button.click()
+    time.sleep(3)  # Ожидание завершения авторизации
 
-def test_bun(driver, wait):
-    username_field = wait.until(EC.visibility_of_element_located((By.ID, "username")))
-    username_field.clear()
-    password_field = driver.find_element(By.ID, "password")
-    password_field.clear()
+    successWindow = driver.find_element(By.CLASS_NAME, 'app-container')
 
-    expected_url = "https://127.0.0.1:2443/#/"
+    # Проверка успешной авторизации (пример проверки)
+    assert successWindow.is_displayed()
 
-    login(driver, wait, "tester", "ClosedBmc")
-    try:
-        wait.until(EC.url_to_be(expected_url))
-    except Exception:
-        pytest.fail
-    time.sleep(5)
+def test_fail_login(driver):
+    # Переход на страницу авторизации
+    driver.get('https://localhost:2443/?next=/login#/login')
+    time.sleep(3)
 
-    for _ in range (3):
-        login(driver, wait, "tester", "Close453Bmc")
-        time.sleep(5)
-    
-    login(driver, wait, "tester", "ClosedBmc")
-    time.sleep(5)
+    username = driver.find_element(By.ID, 'username')
+    password = driver.find_element(By.ID, 'password')
+    login_button = driver.find_element(By.CLASS_NAME, 'btn.btn-primary.mt-3')
+
+    # Ввод данных для авторизации
+    username.send_keys('root')
+    password.send_keys('OpenBmc') # Не верный пароль
+
+    login_button.click()
+    time.sleep(3)
 
     errorWindow = driver.find_element(By.CLASS_NAME, 'neterror')
+
+    assert errorWindow.is_displayed()
+
+def test_block_user(driver):
+    # Функция для попытки входа
+    def attempt_login(username_value, password_value):
+        driver.get('https://localhost:2443/?next=/login#/login')
+        time.sleep(3)
+        # Ожидание появления элементов формы
+        username = driver.find_element(By.ID, 'username')
+        password = driver.find_element(By.ID, 'password')
+        login_button = driver.find_element(By.CLASS_NAME, 'btn.btn-primary.mt-3')
+        
+        # Ввод данных для авторизации
+        username.send_keys(username_value)
+        password.send_keys(password_value)
+        login_button.click()
+
+    # Попытка входа с правильным паролем
+    attempt_login('user', 'somepass1')  # Правильный пароль
+    time.sleep(3)
+
+    # Три попытки входа с неверным паролем
+    for _ in range(3):
+        attempt_login('user', 'OpenBmc')  # Неверный пароль
+        time.sleep(3)
+
+    # Попытка входа с правильным паролем
+    attempt_login('user', 'somepass1')  # Правильный пароль
+    time.sleep(3)
+
+    errorWindow = driver.find_element(By.CLASS_NAME, 'neterror')
+
     assert errorWindow.is_displayed()
